@@ -15,7 +15,10 @@ def send_message_list(message_list):
         with app:
             for message in message_list:
                 count += 1
-                app.send_message(int(channel_id), message.get('html_text'))
+                if not message.get('file_path'):
+                    app.send_message(chat_id=int(channel_id), text=message.get('html_text'))
+                else:
+                    app.send_photo(chat_id=int(channel_id), photo=message.get('file_path'), caption=message.get('html_text'))
                 print(f"Message sent : {count} / {len(message_list)}")
                 time.sleep(1)
     return True

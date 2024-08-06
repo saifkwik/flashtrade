@@ -5,8 +5,6 @@ import pprint
 from datetime import datetime
 import dateparser
 from telegram import send_message_list
-import cv2
-import numpy as np
 import requests
 from io import BytesIO
 from PIL import Image
@@ -76,8 +74,6 @@ def create_doc_html(doc):
     html_text = ""
     html_text += f"<b>{doc['description']}</b>\n\n"
     html_text += f"<i>time: {dateparser.parse(doc['date']).time()}</i>\n"
-    if doc.get('logo'):
-        html_text += f"{doc['logo']}\n"
     if doc.get('category'):
         html_text += f"category: {doc['category'].lower()}\n"
     if doc.get('stock_name'):
@@ -95,36 +91,35 @@ def sketch_image(url):
     response = requests.get(url)
     image = Image.open(BytesIO(response.content))
     width, height = image.size
-    print(width, height)
-
-    # Check the mode of the image
-    if image.mode == 'L':  # Grayscale
+    if image.mode == 'L':
         new_img = Image.new('L', (width, height))
         for row in range(height):
             for col in range(width):
                 avg = image.getpixel((col, row))
                 new_img.putpixel((col, row), avg)
-    else:  # RGB or RGBA
+    else:
         new_img = Image.new('RGB', (width, height))
         for row in range(height):
             for col in range(width):
                 pixel = image.getpixel((col, row))
-                if isinstance(pixel, tuple) and len(pixel) == 4:  # RGBA
+                if isinstance(pixel, tuple) and len(pixel) == 4:
                     r, g, b, a = pixel
-                elif isinstance(pixel, tuple):  # RGB
+                elif isinstance(pixel, tuple):
                     r, g, b = pixel
-                else:  # Grayscale but not 'L' mode
+                else:
                     r = g = b = pixel
                 avg = int((r + g + b) / 3)
                 new_img.putpixel((col, row), (avg, avg, avg))
-
     hash_url = hashlib.md5(url.encode()).hexdigest()
-    new_img.save(f'images/{hash_url}_sketch.png')
-    return hash_url
+    file_path = f'images/{hash_url}_sketch.png'
+    new_img.save(file_path)
+    return file_path
+
 
 def get_data(force_send=False):
-    if not os.path.exists('news.json'):
-        with open('news.json', 'w') as f:
+    output_json = "output/news.json"
+    if not os.path.exists(output_json):
+        with open(output_json, 'w') as f:
             json.dump([], f, indent=4)
     existing_ids = get_existing_ids()
     print(f"{len(existing_ids)} existing articles found, last article date: {existing_ids[-1]['date']}") if existing_ids else print("No existing articles found")
@@ -140,19 +135,21 @@ def get_data(force_send=False):
         new_articles = combined_news
     print(f"{len(new_articles)} new articles found")
     new_articles = sorted(new_articles, key=lambda x: datetime.strptime(x['date'], '%Y-%m-%dT%H:%M:%S'))
-    new_articles = [{**doc, 'file_path': sketch_image(url=doc.get('logo'))} for doc in new_articles if doc.get('logo')]
+    [art.update({'file_path': sketch_image(art.get('logo'))}) for art in new_articles if art.get('logo')]
     new_articles = [{**doc, 'html_text': create_doc_html(doc)} for doc in new_articles]
-    with open('news.json', 'w') as f:
-        json.dump(new_articles, f, indent=4)
-    exit()
     msg_status = send_message_list(new_articles)
-    if msg_status : print(f"Success")
+    with open(output_json, 'r') as f:
+        existing_articles = json.load(f)
+    existing_articles.extend(new_articles)
+    with open(output_json, 'w') as f:
+        json.dump(existing_articles, f, indent=4)
+    print(f"Success") if msg_status else print("Failed")
     return new_articles
 
 
 if __name__ == "__main__":
     data = get_kotak_news()
-    news = get_data(force_send=True)
-    pprint.pprint(news)
+    news = get_data()
+    # pprint.pprint(news)
     print(len(news))
     # sketch_image(url=True)
