@@ -3,13 +3,14 @@ import json
 import os
 import pprint
 from datetime import datetime
-import requests
 import dateparser
 from telegram import send_message_list
-from ascii_magic import AsciiArt, Front, Back
-from ascii_magic import AsciiArt
-from PIL import ImageEnhance
-from PIL import Image, ImageDraw
+import cv2
+import numpy as np
+import requests
+from io import BytesIO
+from PIL import Image
+
 
 headers = {
     'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -88,21 +89,38 @@ def create_doc_html(doc):
     return html_text
 
 
-def convert_img_ascii(img_url):
-    hash_url = hashlib.md5(img_url.encode()).hexdigest()
-    if not os.path.exists(f'images/{hash_url}.png'):
-        with open(f'images/{hash_url}.png', 'wb') as f:
-            f.write(requests.get(img_url).content)
-    my_art = AsciiArt.from_image(f'images/{hash_url}.png')
-    # my_art.image = ImageEnhance.Brightness(my_art.image).enhance(1)
-    img_width, img_height = my_art.image.size
-    img = Image.new('RGB', (img_width, img_height), color='white')
-    img_draw = ImageDraw.Draw(img)
-    img_draw.text((100, 100), my_art.to_ascii(columns=200), fill='black')
-    output_image_path = f'images/{hash_url}_ascii.png'
-    img.save(output_image_path)
-    print(f"Saved ASCII art as {output_image_path}")
+def sketch_image(url):
+    if not "images" in os.listdir():
+        os.mkdir("images")
+    response = requests.get(url)
+    image = Image.open(BytesIO(response.content))
+    width, height = image.size
+    print(width, height)
 
+    # Check the mode of the image
+    if image.mode == 'L':  # Grayscale
+        new_img = Image.new('L', (width, height))
+        for row in range(height):
+            for col in range(width):
+                avg = image.getpixel((col, row))
+                new_img.putpixel((col, row), avg)
+    else:  # RGB or RGBA
+        new_img = Image.new('RGB', (width, height))
+        for row in range(height):
+            for col in range(width):
+                pixel = image.getpixel((col, row))
+                if isinstance(pixel, tuple) and len(pixel) == 4:  # RGBA
+                    r, g, b, a = pixel
+                elif isinstance(pixel, tuple):  # RGB
+                    r, g, b = pixel
+                else:  # Grayscale but not 'L' mode
+                    r = g = b = pixel
+                avg = int((r + g + b) / 3)
+                new_img.putpixel((col, row), (avg, avg, avg))
+
+    hash_url = hashlib.md5(url.encode()).hexdigest()
+    new_img.save(f'images/{hash_url}_sketch.png')
+    return hash_url
 
 def get_data(force_send=False):
     if not os.path.exists('news.json'):
@@ -122,11 +140,11 @@ def get_data(force_send=False):
         new_articles = combined_news
     print(f"{len(new_articles)} new articles found")
     new_articles = sorted(new_articles, key=lambda x: datetime.strptime(x['date'], '%Y-%m-%dT%H:%M:%S'))
-    new_articles = [{**doc, 'ascii_img': convert_img_ascii(doc['logo'])} for doc in new_articles if doc.get('logo')]
-
+    new_articles = [{**doc, 'file_path': sketch_image(url=doc.get('logo'))} for doc in new_articles if doc.get('logo')]
     new_articles = [{**doc, 'html_text': create_doc_html(doc)} for doc in new_articles]
     with open('news.json', 'w') as f:
         json.dump(new_articles, f, indent=4)
+    exit()
     msg_status = send_message_list(new_articles)
     if msg_status : print(f"Success")
     return new_articles
@@ -137,4 +155,4 @@ if __name__ == "__main__":
     news = get_data(force_send=True)
     pprint.pprint(news)
     print(len(news))
-    # img_ascii()
+    # sketch_image(url=True)
