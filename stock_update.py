@@ -1,13 +1,15 @@
 import hashlib
 import json
-import os
-import pprint
 from datetime import datetime
 import dateparser
 from telegram import send_message_list
 import requests
 from io import BytesIO
 from PIL import Image
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 headers = {
@@ -17,7 +19,7 @@ headers = {
 
 def get_kotak_news():
     updates = []
-    response = requests.get('https://lapi.kotaksecurities.com/1news/search?category=All', headers=headers)
+    response = requests.get(f"{os.getenv('ktak_api')}?category=All", headers=headers)
     if response.status_code == 200:
         response_json = response.json()
         results = response_json["data"]
@@ -35,7 +37,7 @@ def get_kotak_news():
 
 def get_ind_news():
     updates = []
-    response = requests.get('https://apixt-iw.indmoney.com/wright/api/web/v1/markets/today?only_news=true', headers=headers)
+    response = requests.get(f'{os.getenv("ind_mon_api")}?only_news=true', headers=headers)
     if response.status_code == 200:
         response_json = response.json()
         live_news = response_json["data"]["live_news"]
@@ -63,7 +65,7 @@ def get_ind_news():
 
 def get_existing_ids():
     ids = []
-    with open('news.json', 'r') as f:
+    with open('output/news.json', 'r') as f:
         data = json.load(f)
         for item in data:
             ids.append({"_id": item['_id'], "date": item['date']})
@@ -131,6 +133,8 @@ def get_data(force_send=False):
     _existing_ids = [_ex["_id"] for _ex in existing_ids]
     if not force_send:
         new_articles = [x for x in combined_news if x["_id"] not in _existing_ids]
+        new_articles = [art for art in new_articles if
+                        dateparser.parse(art.get('date')) >= dateparser.parse(existing_ids[-1].get('date'))]
     else:
         new_articles = combined_news
     print(f"{len(new_articles)} new articles found")
@@ -148,8 +152,9 @@ def get_data(force_send=False):
 
 
 if __name__ == "__main__":
-    data = get_kotak_news()
-    news = get_data()
+    import pprint
+    # data = get_kotak_news()
+    news = get_data(force_send=False)
     # pprint.pprint(news)
     print(len(news))
     # sketch_image(url=True)
