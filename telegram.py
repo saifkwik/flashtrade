@@ -1,3 +1,4 @@
+import asyncio
 import time
 from pyrogram import Client
 import os
@@ -9,8 +10,13 @@ channel_id = os.getenv('telegram_channel')
 
 
 def send_message_list(message_list):
-    count = 0
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     app = Client(session_string=session_string, name='pyrogram')
+    count = 0
     if message_list:
         with app:
             for message in message_list:

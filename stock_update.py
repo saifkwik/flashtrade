@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 from datetime import datetime
 import dateparser
 from telegram import send_message_list
@@ -133,8 +134,6 @@ def get_data(force_send=False):
     _existing_ids = [_ex["_id"] for _ex in existing_ids]
     if not force_send:
         new_articles = [x for x in combined_news if x["_id"] not in _existing_ids]
-        new_articles = [art for art in new_articles if
-                        dateparser.parse(art.get('date')) >= dateparser.parse(existing_ids[-1].get('date'))]
     else:
         new_articles = combined_news
     print(f"{len(new_articles)} new articles found")
@@ -152,9 +151,12 @@ def get_data(force_send=False):
 
 
 if __name__ == "__main__":
+    for i in range(1000):
+        get_data(force_send=False)
+        time.sleep(300)
     import pprint
     # data = get_kotak_news()
-    news = get_data(force_send=False)
+    # news = get_data(force_send=False)
     # pprint.pprint(news)
-    print(len(news))
+    # print(len(news))
     # sketch_image(url=True)
