@@ -9,8 +9,14 @@ from io import BytesIO
 from PIL import Image
 import os
 from dotenv import load_dotenv
+from pymongo import MongoClient
 
 load_dotenv()
+client = MongoClient(
+    os.getenv('MONGODB_URI')
+)
+db = client[os.getenv('MONGODB_DB')]
+collection = db[os.getenv('MONGODB_COLLECTION')]
 
 
 headers = {
@@ -120,20 +126,16 @@ def sketch_image(url):
 
 
 def get_data(force_send=False):
-    output_json = "output/news.json"
-    if not os.path.exists(output_json):
-        with open(output_json, 'w') as f:
-            json.dump([], f, indent=4)
-    existing_ids = get_existing_ids()
-    print(f"{len(existing_ids)} existing articles found, last article date: {existing_ids[-1]['date']}") if existing_ids else print("No existing articles found")
+    _existing_ids = collection.find({}, {"_id": 1})
+    existing_ids_set = {doc["_id"] for doc in _existing_ids}
+    print(f'{collection.count_documents({})} existing articles found, last article date: {collection.find_one(sort=[("date",-1)])["date"]}')
     combined_news = []
     kotak_news = get_kotak_news()
     ind_news = get_ind_news()
     combined_news.extend(kotak_news)
     combined_news.extend(ind_news)
-    _existing_ids = [_ex["_id"] for _ex in existing_ids]
     if not force_send:
-        new_articles = [x for x in combined_news if x["_id"] not in _existing_ids]
+        new_articles = [x for x in combined_news if x["_id"] not in existing_ids_set]
     else:
         new_articles = combined_news
     print(f"{len(new_articles)} new articles found")
@@ -141,11 +143,10 @@ def get_data(force_send=False):
     [art.update({'file_path': sketch_image(art.get('logo'))}) for art in new_articles if art.get('logo')]
     new_articles = [{**doc, 'html_text': create_doc_html(doc)} for doc in new_articles]
     msg_status = send_message_list(new_articles)
-    with open(output_json, 'r') as f:
-        existing_articles = json.load(f)
-    existing_articles.extend(new_articles)
-    with open(output_json, 'w') as f:
-        json.dump(existing_articles, f, indent=4)
+    if new_articles:
+        new_articles = [x for x in new_articles if x["_id"] not in existing_ids_set]
+        collection.insert_many(new_articles)
+        print(f"Inserted {len(new_articles)} new articles into db")
     print(f"Success") if msg_status else print("Failed")
     return new_articles
 
